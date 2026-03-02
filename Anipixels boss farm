@@ -1,0 +1,237 @@
+--// ===== รอเกมโหลด & Anti-AFK =====
+repeat wait() until game:IsLoaded() and game:GetService("Players")
+
+for i,v in pairs(getconnections(game.Players.LocalPlayer.Idled)) do
+    v:Disable()
+end
+
+--// ===== Services =====
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+
+--// ===== Remotes / Workspace =====
+local RequestBattle = RS:WaitForChild("Events"):WaitForChild("RequestBattle")
+local BattleResult  = RS:WaitForChild("Events"):WaitForChild("BattleResult")
+local campaign = workspace:WaitForChild("Campaign")
+
+--// ===== Boss List =====
+local bosses = {
+	"Boros",
+	"Heian Era Sukuna",
+	"All For One",
+	"Madara Ten Tails",
+	"Fusion Zamasu (Corrupted)",
+}
+
+--// ===== Helpers =====
+local function getChar()
+	local plr = Players.LocalPlayer
+	return plr.Character or plr.CharacterAdded:Wait()
+end
+
+local function safeWait(seconds, runningFlagFn)
+	-- wait แบบเช็ค stop ระหว่างทาง (หยุดไวขึ้น)
+	local t = 0
+	while t < seconds do
+		if not runningFlagFn() then return false end
+		local dt = math.min(0.15, seconds - t)
+		task.wait(dt)
+		t += dt
+	end
+	return true
+end
+
+--// ===== UI Build =====
+local plr = Players.LocalPlayer
+local pg = plr:WaitForChild("PlayerGui")
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "AutoBattleUI"
+gui.ResetOnSpawn = false
+gui.Parent = pg
+
+-- ปุ่มเล็กไว้เปิด/ปิดหน้าต่าง
+local floatingBtn = Instance.new("TextButton")
+floatingBtn.Name = "OpenButton"
+floatingBtn.Size = UDim2.fromOffset(120, 34)
+floatingBtn.Position = UDim2.new(0, 15, 0.5, -17)
+floatingBtn.Text = "⚔ AutoBattle"
+floatingBtn.BackgroundTransparency = 0.15
+floatingBtn.Parent = gui
+
+local main = Instance.new("Frame")
+main.Name = "Main"
+main.Size = UDim2.fromOffset(320, 170)
+main.Position = UDim2.new(0, 150, 0.5, -85)
+main.BackgroundTransparency = 0.12
+main.Visible = true
+main.Parent = gui
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -80, 0, 32)
+title.Position = UDim2.fromOffset(10, 6)
+title.BackgroundTransparency = 1
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Text = "Auto Battle + Give Up"
+title.Parent = main
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.fromOffset(60, 28)
+closeBtn.Position = UDim2.new(1, -70, 0, 6)
+closeBtn.Text = "Hide"
+closeBtn.Parent = main
+
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -20, 0, 26)
+status.Position = UDim2.fromOffset(10, 44)
+status.BackgroundTransparency = 1
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.Text = "Status: Idle"
+status.Parent = main
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(1, -20, 0, 38)
+toggleBtn.Position = UDim2.fromOffset(10, 78)
+toggleBtn.Text = "START"
+toggleBtn.Parent = main
+
+local note = Instance.new("TextLabel")
+note.Size = UDim2.new(1, -20, 0, 44)
+note.Position = UDim2.fromOffset(10, 122)
+note.BackgroundTransparency = 1
+note.TextXAlignment = Enum.TextXAlignment.Left
+note.TextYAlignment = Enum.TextYAlignment.Top
+note.Text = "• START = วาร์ป → ขอสูั → รอ 4.5s → Give Up x3\n• STOP = หยุดลูป (พยายามหยุดไวที่สุด)"
+note.Parent = main
+
+--// ===== Drag Frame (ง่าย ๆ) =====
+do
+	local dragging, dragStart, startPos
+	main.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = input.Position
+			startPos = main.Position
+		end
+	end)
+	UIS.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local delta = input.Position - dragStart
+			main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
+
+--// ===== UI open/close =====
+floatingBtn.MouseButton1Click:Connect(function()
+	main.Visible = not main.Visible
+	closeBtn.Text = main.Visible and "Hide" or "Show"
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+	main.Visible = false
+	closeBtn.Text = "Show"
+end)
+
+--// ===== Runner Logic =====
+local running = false
+local runnerThread = nil
+
+local function setStatus(text)
+	status.Text = "Status: " .. text
+end
+
+local function isRunning()
+	return running
+end
+
+local function runLoop()
+    setStatus("Running...")
+    
+    -- เพิ่ม while loop ตรงนี้เพื่อให้มันทำงานไปเรื่อยๆ จนกว่าเราจะกด STOP
+    while running do 
+        for _, name in ipairs(bosses) do
+            if not running then break end
+
+            setStatus("Searching: " .. name)
+            local boss = campaign:FindFirstChild(name, true)
+            if not boss then
+                warn("Boss not found:", name)
+                continue
+            end
+
+            local bossHRP = boss:FindFirstChild("HumanoidRootPart", true)
+            if not (bossHRP and bossHRP:IsA("BasePart")) then
+                warn("Found boss but no HumanoidRootPart:", name)
+                continue
+            end
+
+            -- วาร์ป
+            setStatus("Warping: " .. name)
+            local char = getChar()
+            if not running then break end
+            char:PivotTo(bossHRP.CFrame * CFrame.new(0, 3, 6))
+
+            -- ขอสูั
+            if not running then break end
+            setStatus("RequestBattle: " .. name)
+            pcall(function()
+                RequestBattle:FireServer(boss)
+            end)
+
+            -- รอเข้าฉากสู้
+            if not safeWait(4.5, isRunning) then break end
+
+            -- Give Up ซ้ำ
+            setStatus("Win x3: " .. name)
+            for i = 1, 3 do
+                if not running then break end
+                pcall(function()
+                    BattleResult:FireServer("Won")
+                end)
+                if not safeWait(1, isRunning) then break end
+            end
+            if not running then break end
+
+            -- เว้นให้โหลดออกจากฉาก
+            setStatus("Exit battle wait: " .. name)
+            if not safeWait(4, isRunning) then break end
+        end
+        
+        -- ใส่ wait กันเกมค้าง เผื่อกรณีที่บอสไม่มีสักตัวแล้วลูปมันหมุนรัวๆ
+        if running then
+            task.wait(1) 
+        end
+    end
+
+    -- จบ
+    running = false
+    toggleBtn.Text = "START"
+    setStatus("Idle")
+end
+
+toggleBtn.MouseButton1Click:Connect(function()
+	if running then
+		-- STOP
+		running = false
+		toggleBtn.Text = "START"
+		setStatus("Stopping...")
+		return
+	end
+
+	-- START
+	running = true
+	toggleBtn.Text = "STOP"
+	-- กันกดซ้อน
+	if runnerThread and coroutine.status(runnerThread) ~= "dead" then
+		-- ถ้ามีตัวเก่าค้าง (ปกติไม่ควร) ก็ปล่อยให้เช็ค running แล้วหยุดเอง
+	end
+	runnerThread = coroutine.create(runLoop)
+	coroutine.resume(runnerThread)
+end)
