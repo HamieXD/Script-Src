@@ -1,7 +1,7 @@
 --// ===== รอเกมโหลด & Anti-AFK =====
-repeat wait() until game:IsLoaded() and game:GetService("Players")
+repeat task.wait() until game:IsLoaded() and game:GetService("Players")
 
-for i,v in pairs(getconnections(game.Players.LocalPlayer.Idled)) do
+for i,v in pairs(getconnections(game:GetService("Players").LocalPlayer.Idled)) do
     v:Disable()
 end
 
@@ -17,221 +17,286 @@ local campaign = workspace:WaitForChild("Campaign")
 
 --// ===== Boss List =====
 local bosses = {
-	"Boros",
-	"Heian Era Sukuna",
-	"All For One",
-	"Madara Ten Tails",
-	"Fusion Zamasu (Corrupted)",
+    "Boros",
+    "Heian Era Sukuna",
+    "All For One",
+    "Madara Ten Tails",
+    "Fusion Zamasu (Corrupted)",
 }
 
 --// ===== Helpers =====
 local function getChar()
-	local plr = Players.LocalPlayer
-	return plr.Character or plr.CharacterAdded:Wait()
+    local plr = Players.LocalPlayer
+    return plr.Character or plr.CharacterAdded:Wait()
 end
 
 local function safeWait(seconds, runningFlagFn)
-	-- wait แบบเช็ค stop ระหว่างทาง (หยุดไวขึ้น)
-	local t = 0
-	while t < seconds do
-		if not runningFlagFn() then return false end
-		local dt = math.min(0.15, seconds - t)
-		task.wait(dt)
-		t += dt
-	end
-	return true
+    -- wait แบบเช็ค stop ระหว่างทาง (หยุดไวขึ้น)
+    local t = 0
+    while t < seconds do
+        if not runningFlagFn() then return false end
+        local dt = math.min(0.15, seconds - t)
+        task.wait(dt)
+        t += dt
+    end
+    return true
 end
 
 --// ===== UI Build =====
 local plr = Players.LocalPlayer
 local pg = plr:WaitForChild("PlayerGui")
 
+-- ลบ UI เก่าทิ้งถ้ามี
+if pg:FindFirstChild("AutoBattleUI") then
+    pg:FindFirstChild("AutoBattleUI"):Destroy()
+end
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "AutoBattleUI"
 gui.ResetOnSpawn = false
 gui.Parent = pg
 
--- ปุ่มเล็กไว้เปิด/ปิดหน้าต่าง
+-- ปุ่มเล็กไว้เปิดหน้าต่าง (Floating Button)
 local floatingBtn = Instance.new("TextButton")
 floatingBtn.Name = "OpenButton"
 floatingBtn.Size = UDim2.fromOffset(120, 34)
 floatingBtn.Position = UDim2.new(0, 15, 0.5, -17)
-floatingBtn.Text = "⚔ AutoBattle"
+floatingBtn.Text = "⚔ เปิดเมนูโปร"
+floatingBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+floatingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 floatingBtn.BackgroundTransparency = 0.15
 floatingBtn.Parent = gui
 
+-- หน้าต่างหลัก
 local main = Instance.new("Frame")
 main.Name = "Main"
-main.Size = UDim2.fromOffset(320, 170)
-main.Position = UDim2.new(0, 150, 0.5, -85)
+main.Size = UDim2.fromOffset(320, 260)
+main.Position = UDim2.new(0, 150, 0.5, -130)
+main.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 main.BackgroundTransparency = 0.12
-main.Visible = true
+main.Visible = false
 main.Parent = gui
 
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -80, 0, 32)
 title.Position = UDim2.fromOffset(10, 6)
 title.BackgroundTransparency = 1
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextXAlignment = Enum.TextXAlignment.Left
-title.Text = "Auto Battle + Give Up"
+title.Text = "Multi-Auto Farm"
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 18
 title.Parent = main
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.fromOffset(60, 28)
 closeBtn.Position = UDim2.new(1, -70, 0, 6)
 closeBtn.Text = "Hide"
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeBtn.Parent = main
 
-local status = Instance.new("TextLabel")
-status.Size = UDim2.new(1, -20, 0, 26)
-status.Position = UDim2.fromOffset(10, 44)
-status.BackgroundTransparency = 1
-status.TextXAlignment = Enum.TextXAlignment.Left
-status.Text = "Status: Idle"
-status.Parent = main
+-- ส่วนของ Boss Farm
+local statusBoss = Instance.new("TextLabel")
+statusBoss.Size = UDim2.new(1, -20, 0, 20)
+statusBoss.Position = UDim2.fromOffset(10, 40)
+statusBoss.BackgroundTransparency = 1
+statusBoss.TextColor3 = Color3.fromRGB(200, 200, 200)
+statusBoss.TextXAlignment = Enum.TextXAlignment.Left
+statusBoss.Text = "Boss Status: Idle"
+statusBoss.Parent = main
 
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(1, -20, 0, 38)
-toggleBtn.Position = UDim2.fromOffset(10, 78)
-toggleBtn.Text = "START"
-toggleBtn.Parent = main
+local toggleBossBtn = Instance.new("TextButton")
+toggleBossBtn.Size = UDim2.new(1, -20, 0, 35)
+toggleBossBtn.Position = UDim2.fromOffset(10, 65)
+toggleBossBtn.Text = "START AUTO BOSS"
+toggleBossBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+toggleBossBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBossBtn.Font = Enum.Font.SourceSansBold
+toggleBossBtn.TextSize = 16
+toggleBossBtn.Parent = main
+
+-- ส่วนของ PVP / Elo Farm
+local statusPvp = Instance.new("TextLabel")
+statusPvp.Size = UDim2.new(1, -20, 0, 20)
+statusPvp.Position = UDim2.fromOffset(10, 110)
+statusPvp.BackgroundTransparency = 1
+statusPvp.TextColor3 = Color3.fromRGB(200, 200, 200)
+statusPvp.TextXAlignment = Enum.TextXAlignment.Left
+statusPvp.Text = "PVP Status: Idle"
+statusPvp.Parent = main
+
+local togglePvpBtn = Instance.new("TextButton")
+togglePvpBtn.Size = UDim2.new(1, -20, 0, 35)
+togglePvpBtn.Position = UDim2.fromOffset(10, 135)
+togglePvpBtn.Text = "START AUTO PVP ELO"
+togglePvpBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+togglePvpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+togglePvpBtn.Font = Enum.Font.SourceSansBold
+togglePvpBtn.TextSize = 16
+togglePvpBtn.Parent = main
 
 local note = Instance.new("TextLabel")
-note.Size = UDim2.new(1, -20, 0, 44)
-note.Position = UDim2.fromOffset(10, 122)
+note.Size = UDim2.new(1, -20, 0, 60)
+note.Position = UDim2.fromOffset(10, 185)
 note.BackgroundTransparency = 1
+note.TextColor3 = Color3.fromRGB(180, 180, 180)
 note.TextXAlignment = Enum.TextXAlignment.Left
 note.TextYAlignment = Enum.TextYAlignment.Top
-note.Text = "• START = วาร์ป → ขอสูั → รอ 4.5s → Give Up x3\n• STOP = หยุดลูป (พยายามหยุดไวที่สุด)"
+note.Text = "• Boss: วาร์ป → ขอสู้ → รอ → Give Up x3\n• PVP: ขอสู้บอร์ด Elo → รอ 5s → Give Up\n• ลากหน้าต่างนี้ได้"
 note.Parent = main
 
---// ===== Drag Frame (ง่าย ๆ) =====
+--// ===== Drag Frame =====
 do
-	local dragging, dragStart, startPos
-	main.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
-			dragStart = input.Position
-			startPos = main.Position
-		end
-	end)
-	UIS.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = false
-		end
-	end)
-	UIS.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-			local delta = input.Position - dragStart
-			main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-		end
-	end)
+    local dragging, dragStart, startPos
+    main.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = main.Position
+        end
+    end)
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
 end
 
 --// ===== UI open/close =====
 floatingBtn.MouseButton1Click:Connect(function()
-	main.Visible = not main.Visible
-	closeBtn.Text = main.Visible and "Hide" or "Show"
+    main.Visible = not main.Visible
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
-	main.Visible = false
-	closeBtn.Text = "Show"
+    main.Visible = false
 end)
 
---// ===== Runner Logic =====
-local running = false
-local runnerThread = nil
+--// ===== Logic: Auto Boss =====
+local runningBoss = false
+local bossThread = nil
 
-local function setStatus(text)
-	status.Text = "Status: " .. text
-end
+local function isBossRunning() return runningBoss end
 
-local function isRunning()
-	return running
-end
-
-local function runLoop()
-    setStatus("Running...")
+local function runBossLoop()
+    statusBoss.Text = "Boss Status: Running..."
     
-    -- เพิ่ม while loop ตรงนี้เพื่อให้มันทำงานไปเรื่อยๆ จนกว่าเราจะกด STOP
-    while running do 
+    while runningBoss do 
         for _, name in ipairs(bosses) do
-            if not running then break end
+            if not runningBoss then break end
 
-            setStatus("Searching: " .. name)
+            statusBoss.Text = "Searching: " .. name
             local boss = campaign:FindFirstChild(name, true)
-            if not boss then
-                warn("Boss not found:", name)
-                continue
-            end
+            if not boss then continue end
 
             local bossHRP = boss:FindFirstChild("HumanoidRootPart", true)
-            if not (bossHRP and bossHRP:IsA("BasePart")) then
-                warn("Found boss but no HumanoidRootPart:", name)
-                continue
-            end
+            if not (bossHRP and bossHRP:IsA("BasePart")) then continue end
 
-            -- วาร์ป
-            setStatus("Warping: " .. name)
+            statusBoss.Text = "Warping: " .. name
             local char = getChar()
-            if not running then break end
+            if not runningBoss then break end
             char:PivotTo(bossHRP.CFrame * CFrame.new(0, 3, 6))
 
-            -- ขอสูั
-            if not running then break end
-            setStatus("RequestBattle: " .. name)
-            pcall(function()
-                RequestBattle:FireServer(boss)
-            end)
+            if not runningBoss then break end
+            statusBoss.Text = "RequestBattle: " .. name
+            pcall(function() RequestBattle:FireServer(boss) end)
 
-            -- รอเข้าฉากสู้
-            if not safeWait(4.5, isRunning) then break end
+            if not safeWait(4.5, isBossRunning) then break end
 
-            -- Give Up ซ้ำ
-            setStatus("Win x3: " .. name)
+            statusBoss.Text = "Win x3: " .. name
             for i = 1, 3 do
-                if not running then break end
-                pcall(function()
-                    BattleResult:FireServer("Won")
-                end)
-                if not safeWait(1, isRunning) then break end
+                if not runningBoss then break end
+                pcall(function() BattleResult:FireServer("Won") end)
+                if not safeWait(1, isBossRunning) then break end
             end
-            if not running then break end
+            if not runningBoss then break end
 
-            -- เว้นให้โหลดออกจากฉาก
-            setStatus("Exit battle wait: " .. name)
-            if not safeWait(4, isRunning) then break end
+            statusBoss.Text = "Exit battle wait: " .. name
+            if not safeWait(4, isBossRunning) then break end
         end
         
-        -- ใส่ wait กันเกมค้าง เผื่อกรณีที่บอสไม่มีสักตัวแล้วลูปมันหมุนรัวๆ
-        if running then
-            task.wait(1) 
-        end
+        if runningBoss then task.wait(1) end
     end
 
-    -- จบ
-    running = false
-    toggleBtn.Text = "START"
-    setStatus("Idle")
+    runningBoss = false
+    toggleBossBtn.Text = "START AUTO BOSS"
+    toggleBossBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+    statusBoss.Text = "Boss Status: Idle"
 end
 
-toggleBtn.MouseButton1Click:Connect(function()
-	if running then
-		-- STOP
-		running = false
-		toggleBtn.Text = "START"
-		setStatus("Stopping...")
-		return
-	end
+toggleBossBtn.MouseButton1Click:Connect(function()
+    if runningBoss then
+        runningBoss = false
+        toggleBossBtn.Text = "START AUTO BOSS"
+        toggleBossBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+        statusBoss.Text = "Boss Status: Stopping..."
+    else
+        runningBoss = true
+        toggleBossBtn.Text = "STOP AUTO BOSS"
+        toggleBossBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+        bossThread = coroutine.create(runBossLoop)
+        coroutine.resume(bossThread)
+    end
+end)
 
-	-- START
-	running = true
-	toggleBtn.Text = "STOP"
-	-- กันกดซ้อน
-	if runnerThread and coroutine.status(runnerThread) ~= "dead" then
-		-- ถ้ามีตัวเก่าค้าง (ปกติไม่ควร) ก็ปล่อยให้เช็ค running แล้วหยุดเอง
-	end
-	runnerThread = coroutine.create(runLoop)
-	coroutine.resume(runnerThread)
+--// ===== Logic: Auto PVP Elo =====
+local runningPvp = false
+local pvpThread = nil
+
+local function isPvpRunning() return runningPvp end
+
+local function runPvpLoop()
+    statusPvp.Text = "PVP Status: Running..."
+    
+    while runningPvp do
+        statusPvp.Text = "PVP Status: Requesting Battle..."
+        pcall(function()
+            -- ค้นหาจุด EloLeaderboard เผื่อ Map โหลดช้าจะได้ไม่ error แดง
+            local target = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("PVP") 
+                           and workspace.Map.PVP:FindFirstChild("Deco") and workspace.Map.PVP.Deco:FindFirstChild("EloLeaderboard")
+                           and workspace.Map.PVP.Deco.EloLeaderboard:FindFirstChild("First")
+            if target then
+                RequestBattle:FireServer(target)
+            else
+                statusPvp.Text = "PVP Status: Target Not Found!"
+            end
+        end)
+
+        -- รอ 5 วิ ตามโค้ดต้นฉบับ
+        if not safeWait(5, isPvpRunning) then break end
+
+        statusPvp.Text = "PVP Status: Won"
+        pcall(function()
+            BattleResult:FireServer("Won")
+        end)
+
+        -- รอ cooldown ก่อนวนลูปใหม่ (ตั้งไว้ 2 วิ สามารถแก้ได้ถ้าต้องการให้เร็ว/ช้าลง)
+        if not safeWait(2, isPvpRunning) then break end
+    end
+
+    runningPvp = false
+    togglePvpBtn.Text = "START AUTO PVP ELO"
+    togglePvpBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+    statusPvp.Text = "PVP Status: Idle"
+end
+
+togglePvpBtn.MouseButton1Click:Connect(function()
+    if runningPvp then
+        runningPvp = false
+        togglePvpBtn.Text = "START AUTO PVP ELO"
+        togglePvpBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+        statusPvp.Text = "PVP Status: Stopping..."
+    else
+        runningPvp = true
+        togglePvpBtn.Text = "STOP AUTO PVP ELO"
+        togglePvpBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+        pvpThread = coroutine.create(runPvpLoop)
+        coroutine.resume(pvpThread)
+    end
 end)
