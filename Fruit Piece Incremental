@@ -1,0 +1,228 @@
+local player = game.Players.LocalPlayer
+local guiParent = pcall(function() return game:GetService("CoreGui").Name end) and game:GetService("CoreGui") or player:WaitForChild("PlayerGui")
+
+-- ลบ GUI เก่าออกก่อน
+local guiName = "AutoFarmGUI_Hub"
+if guiParent:FindFirstChild(guiName) then
+    guiParent[guiName]:Destroy()
+end
+
+-- สร้าง ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = guiName
+screenGui.Parent = guiParent
+
+-- ==========================================
+-- สร้างปุ่ม "เปิดเมนู" (ซ่อนไว้ก่อน จะโชว์ตอนกดย่อ)
+-- ==========================================
+local openMenuBtn = Instance.new("TextButton")
+openMenuBtn.Size = UDim2.new(0, 120, 0, 40)
+openMenuBtn.Position = UDim2.new(0, 20, 0, 20) -- มุมซ้ายบนของจอ
+openMenuBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+openMenuBtn.Text = "Open Menu"
+openMenuBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+openMenuBtn.TextSize = 14
+openMenuBtn.Font = Enum.Font.GothamBold
+openMenuBtn.Visible = false -- ซ่อนไว้ตอนเริ่มต้น
+openMenuBtn.Parent = screenGui
+
+local openCorner = Instance.new("UICorner")
+openCorner.CornerRadius = UDim.new(0, 8)
+openCorner.Parent = openMenuBtn
+
+-- ==========================================
+-- สร้างหน้าต่างหลัก (Frame)
+-- ==========================================
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 300, 0, 320)
+mainFrame.Position = UDim2.new(0.5, -150, 0.5, -160)
+mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 10)
+corner.Parent = mainFrame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -80, 0, 40)
+title.Position = UDim2.new(0, 15, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Auto Farm Menu"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 18
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left -- จัดชิดซ้ายเว้นที่ให้ปุ่ม
+title.Parent = mainFrame
+
+-- ==========================================
+-- ปุ่มย่อ (-) และ ปุ่มปิด (X)
+-- ==========================================
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 30, 0, 30)
+minBtn.Position = UDim2.new(1, -70, 0, 5)
+minBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+minBtn.Text = "-"
+minBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+minBtn.TextSize = 20
+minBtn.Font = Enum.Font.GothamBold
+minBtn.Parent = mainFrame
+
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0, 6)
+minCorner.Parent = minBtn
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 5)
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextSize = 16
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.Parent = mainFrame
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 6)
+closeCorner.Parent = closeBtn
+
+-- ระบบทำงานของปุ่มย่อ/ขยาย
+minBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = false
+    openMenuBtn.Visible = true
+end)
+
+openMenuBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = true
+    openMenuBtn.Visible = false
+end)
+
+-- ==========================================
+-- ระบบ Auto Farm
+-- ==========================================
+local states = {
+    Train = false,
+    Haki = false,
+    Work = false,
+    Fish = false
+}
+
+local workList = {
+    "odd_jobs",
+    "fishing",
+    "bounty_hunt",
+    "treasure_map",
+    "raiding"
+}
+local currentWorkIndex = #workList 
+
+-- ระบบทำงานของปุ่มปิด (X) -> เปิดทุกอย่างให้เป็น True และลบ UI ทิ้ง
+closeBtn.MouseButton1Click:Connect(function()
+    states.Train = true
+    states.Haki = true
+    states.Work = true
+    states.Fish = true
+    screenGui:Destroy() -- ลบหน้าต่างออก แต่ Loop ยังทำงานอยู่
+end)
+
+local function createToggleButton(name, yPos, stateKey)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(0, 260, 0, 40)
+    button.Position = UDim2.new(0, 20, 0, yPos)
+    button.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    button.Text = name .. " : OFF"
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 16
+    button.Font = Enum.Font.GothamSemibold
+    button.Parent = mainFrame
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 8)
+    btnCorner.Parent = button
+
+    button.MouseButton1Click:Connect(function()
+        states[stateKey] = not states[stateKey]
+        if states[stateKey] then
+            button.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+            button.Text = name .. " : ON"
+        else
+            button.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+            button.Text = name .. " : OFF"
+        end
+    end)
+end
+
+createToggleButton("Auto Train Level", 50, "Train")
+createToggleButton("Auto Train Haki", 100, "Haki")
+createToggleButton("Auto Fish Cast", 260, "Fish")
+
+local workToggleBtn = Instance.new("TextButton")
+workToggleBtn.Size = UDim2.new(0, 140, 0, 40)
+workToggleBtn.Position = UDim2.new(0, 20, 0, 150)
+workToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+workToggleBtn.Text = "Auto Work : OFF"
+workToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+workToggleBtn.TextSize = 14
+workToggleBtn.Font = Enum.Font.GothamSemibold
+workToggleBtn.Parent = mainFrame
+
+local workCorner1 = Instance.new("UICorner")
+workCorner1.CornerRadius = UDim.new(0, 8)
+workCorner1.Parent = workToggleBtn
+
+workToggleBtn.MouseButton1Click:Connect(function()
+    states.Work = not states.Work
+    if states.Work then
+        workToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        workToggleBtn.Text = "Auto Work : ON"
+    else
+        workToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        workToggleBtn.Text = "Auto Work : OFF"
+    end
+end)
+
+local workSelectBtn = Instance.new("TextButton")
+workSelectBtn.Size = UDim2.new(0, 110, 0, 40)
+workSelectBtn.Position = UDim2.new(0, 170, 0, 150)
+workSelectBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 180) 
+workSelectBtn.Text = workList[currentWorkIndex]
+workSelectBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+workSelectBtn.TextSize = 12
+workSelectBtn.Font = Enum.Font.GothamSemibold
+workSelectBtn.TextWrapped = true
+workSelectBtn.Parent = mainFrame
+
+local workCorner2 = Instance.new("UICorner")
+workCorner2.CornerRadius = UDim.new(0, 8)
+workCorner2.Parent = workSelectBtn
+
+workSelectBtn.MouseButton1Click:Connect(function()
+    currentWorkIndex = currentWorkIndex + 1
+    if currentWorkIndex > #workList then
+        currentWorkIndex = 1
+    end
+    workSelectBtn.Text = workList[currentWorkIndex]
+end)
+
+local workNote = Instance.new("TextLabel")
+workNote.Size = UDim2.new(0, 260, 0, 20)
+workNote.Position = UDim2.new(0, 20, 0, 195)
+workNote.BackgroundTransparency = 1
+workNote.Text = "👉 Click the blue button to change work type"
+workNote.TextColor3 = Color3.fromRGB(200, 200, 200)
+workNote.TextSize = 11
+workNote.Font = Enum.Font.Gotham
+workNote.Parent = mainFrame
+
+-- ระบบ Loop ยิง Remote Events (เมื่อกดยกเลิก UI ลูปนี้จะยังคงทำงานอยู่)
+local rsEvents = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents")
+
+task.spawn(function()
+    while task.wait() do
+        if states.Train then pcall(function() rsEvents.TrainLevel:FireServer() end) end
+        if states.Haki then pcall(function() rsEvents.TrainHaki:FireServer() end) end
+        if states.Work then pcall(function() rsEvents.DoWork:FireServer(workList[currentWorkIndex]) end) end
+        if states.Fish then pcall(function() rsEvents.FishCast:FireServer() end) end
+    end
+end)
