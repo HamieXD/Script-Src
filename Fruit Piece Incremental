@@ -1,5 +1,23 @@
-local player = game.Players.LocalPlayer
-local guiParent = pcall(function() return game:GetService("CoreGui").Name end) and game:GetService("CoreGui") or player:WaitForChild("PlayerGui")
+local player = game:GetService("Players").LocalPlayer
+
+-- ==========================================
+-- ระบบ Anti-AFK (จำลองการคลิกเมาส์ที่มุมซ้ายล่าง)
+-- ==========================================
+local VirtualUser = game:GetService("VirtualUser")
+player.Idled:Connect(function()
+    -- เมื่อเกมกำลังจะเตะเราออกเพราะไม่ได้ขยับตัว (Idled)
+    VirtualUser:CaptureController()
+    -- จำลองการกดคลิกขวาค้างไว้ 1 วินาทีที่มุมซ้ายล่าง (พิกัด Y เยอะๆ)
+    VirtualUser:Button2Down(Vector2.new(0, 9999), workspace.CurrentCamera.CFrame)
+    wait(1)
+    VirtualUser:Button2Up(Vector2.new(0, 9999), workspace.CurrentCamera.CFrame)
+    print("[PirateFarm] Anti-AFK Auto-Clicked at bottom-left!")
+end)
+
+-- หาระบบ GUI ที่ปลอดภัยที่สุด (CoreGui หรือ PlayerGui)
+local guiParent
+pcall(function() guiParent = game:GetService("CoreGui") end)
+if not guiParent then guiParent = player:WaitForChild("PlayerGui") end
 
 -- ลบ GUI เก่าออกก่อน
 local guiName = "AutoFarmGUI_Hub"
@@ -10,6 +28,7 @@ end
 -- สร้าง ScreenGui
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = guiName
+screenGui.ResetOnSpawn = false -- ป้องกัน UI หายตอนตาย
 screenGui.Parent = guiParent
 
 -- ==========================================
@@ -34,8 +53,8 @@ openCorner.Parent = openMenuBtn
 -- สร้างหน้าต่างหลัก (Frame)
 -- ==========================================
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 300, 0, 320)
-mainFrame.Position = UDim2.new(0.5, -150, 0.5, -160)
+mainFrame.Size = UDim2.new(0, 300, 0, 360) 
+mainFrame.Position = UDim2.new(0.5, -150, 0.5, -180)
 mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 mainFrame.Active = true
 mainFrame.Draggable = true
@@ -53,7 +72,7 @@ title.Text = "Auto Farm Menu"
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.TextSize = 18
 title.Font = Enum.Font.GothamBold
-title.TextXAlignment = Enum.TextXAlignment.Left -- จัดชิดซ้ายเว้นที่ให้ปุ่ม
+title.TextXAlignment = Enum.TextXAlignment.Left 
 title.Parent = mainFrame
 
 -- ==========================================
@@ -87,7 +106,6 @@ local closeCorner = Instance.new("UICorner")
 closeCorner.CornerRadius = UDim.new(0, 6)
 closeCorner.Parent = closeBtn
 
--- ระบบทำงานของปุ่มย่อ/ขยาย
 minBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = false
     openMenuBtn.Visible = true
@@ -113,17 +131,17 @@ local workList = {
     "fishing",
     "bounty_hunt",
     "treasure_map",
-    "raiding"
+    "raiding",
+    "grand_heist"
 }
 local currentWorkIndex = #workList 
 
--- ระบบทำงานของปุ่มปิด (X) -> เปิดทุกอย่างให้เป็น True และลบ UI ทิ้ง
 closeBtn.MouseButton1Click:Connect(function()
     states.Train = true
     states.Haki = true
     states.Work = true
     states.Fish = true
-    screenGui:Destroy() -- ลบหน้าต่างออก แต่ Loop ยังทำงานอยู่
+    screenGui:Destroy() 
 end)
 
 local function createToggleButton(name, yPos, stateKey)
@@ -215,11 +233,41 @@ workNote.TextSize = 11
 workNote.Font = Enum.Font.Gotham
 workNote.Parent = mainFrame
 
--- ระบบ Loop ยิง Remote Events (เมื่อกดยกเลิก UI ลูปนี้จะยังคงทำงานอยู่)
+-- ==========================================
+-- ระบบ โชว์จำนวนเงิน Beli แบบ Real-time
+-- ==========================================
+local beliLabel = Instance.new("TextLabel")
+beliLabel.Size = UDim2.new(0, 260, 0, 30)
+beliLabel.Position = UDim2.new(0, 20, 0, 315) 
+beliLabel.BackgroundTransparency = 1
+beliLabel.Text = "💰 Beli: Loading..."
+beliLabel.TextColor3 = Color3.fromRGB(255, 215, 0)
+beliLabel.TextSize = 16
+beliLabel.Font = Enum.Font.GothamBold
+beliLabel.TextXAlignment = Enum.TextXAlignment.Center
+beliLabel.Parent = mainFrame
+
+spawn(function()
+    local leaderstats = player:WaitForChild("leaderstats", 10)
+    if leaderstats then
+        local beliValue = leaderstats:WaitForChild("Beli", 10)
+        if beliValue then
+            beliLabel.Text = "💰 Beli: " .. tostring(beliValue.Value)
+            beliValue.Changed:Connect(function(newValue)
+                beliLabel.Text = "💰 Beli: " .. tostring(newValue)
+            end)
+        end
+    end
+end)
+
+-- ==========================================
+-- ระบบ Loop ยิง Remote Events 
+-- ==========================================
 local rsEvents = game:GetService("ReplicatedStorage"):WaitForChild("RemoteEvents")
 
-task.spawn(function()
-    while task.wait() do
+spawn(function()
+    while true do
+        wait(0.1)
         if states.Train then pcall(function() rsEvents.TrainLevel:FireServer() end) end
         if states.Haki then pcall(function() rsEvents.TrainHaki:FireServer() end) end
         if states.Work then pcall(function() rsEvents.DoWork:FireServer(workList[currentWorkIndex]) end) end
