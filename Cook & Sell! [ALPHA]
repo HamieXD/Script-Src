@@ -1,0 +1,454 @@
+--// ===== รอเกมโหลดแบบปลอดภัย =====
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+
+--// ===== ตัวแปรควบคุมการทำงาน =====
+local scriptRunning = true
+local autoFarm = false
+local autoCheckout = false
+local currentPlot = 1
+
+local categoryOrder = {"Bread", "Pastry", "Cake", "Donut", "Pancake", "Waffle", "Ice Cream"}
+local currentCategoryIdx = 1 
+
+local plotColors = {
+    [1] = "Green Rooftop",
+    [2] = "Red Rooftop",
+    [3] = "Yellow Rooftop",
+    [4] = "Orange Rooftop",
+    [5] = "Blue Rooftop",
+    [6] = "Purple Rooftop"
+}
+
+-- 📋 ฐานข้อมูลเมนูอาหารแบบเป๊ะ 100%
+local allMenusByCategory = {
+    ["Ice Cream"] = {
+        "StrawberryIceCream", "StrawberryCaramelIceCream", "ChocolateStrawberryIceCream"
+    },
+    ["Waffle"] = {
+        "ChocoWaffle", "PlainSmallWaffle", "SquareWaffle", "SweetWaffle"
+    },
+    ["Pancake"] = {
+        "PlainPancake", "MiniPancakeStack", "BlueberryPancakes", "PlainPancakes", "ChocoVanillaPancakes", "StrawberryChocolatePancakes", "BananaPancakes"
+    },
+    ["Donut"] = {
+        "ChocoCaramelDonut", "PlainRingDonut", "PlainSquareDonut", "PlainJellyDonut", "VanillaChocRingDonut", "OrangeChocolateJellyDonut", "StrawberryChocJellyDonut", "StrawberryVanillaJellyDonut"
+    },
+    ["Cake"] = {
+        "VanillaStrawberryCakeSlice", "PlainCake", "DoubleChocCake", "PlainTripleCake", "ChocStrawberryCakeSlice", "LemonSpongeCake"
+    },
+    ["Pastry"] = {
+        "ApplePieSlice", "DarkChocolatePieSlice", "Croissant", "LimePieSlice", "BlueberryPieSlice", "PumpkinPieSlice", "ChocolateCroissant", "PainAuChocolat", "BrownSesamePretzel", "BrownSesameWreath", "SweetWreath"
+    },
+    ["Bread"] = {
+        "VanillaConcha", "SesameKaiserBun", "Bagel", "KaiserBun", "HotCrossBun", "SesameBagel", "BakedBaoBun", "StrawberryConcha", "ChocolateConcha", "BrownSourdough", "BrownBreadRoll", "WhiteBreadRoll", "FrenchBagguette", "MarbleBreadSlice", "MilkBreadHalf", "MelonPanBread", "EggBread", "MarbleBreadLoaf", "MatchaMelonPanBread", "MilkBreadLoaf", "MatchaBread", "BreadSticks", "SweetJapaneseBread"
+    }
+}
+
+local function safeWait(duration)
+    local elapsed = 0
+    while elapsed < duration do
+        if not (autoFarm and scriptRunning) then return false end
+        task.wait(0.1)
+        elapsed = elapsed + 0.1
+    end
+    return true
+end
+
+local function getCookedTool()
+    local char = player.Character
+    if char then
+        for _, v in ipairs(char:GetChildren()) do
+            if v:IsA("Tool") then return v end
+        end
+    end
+    for _, v in ipairs(player.Backpack:GetChildren()) do
+        if v:IsA("Tool") then return v end
+    end
+    return nil
+end
+
+-- 💰 ฟังก์ชันดึงจำนวนเงินปัจจุบันของเชฟ (อ่านจาก UI และตัด $ กับ , ออกให้เหลือแต่ตัวเลข)
+local function getCurrentMoney()
+    local amountLabel = player:FindFirstChild("PlayerGui")
+        and player.PlayerGui:FindFirstChild("Balance")
+        and player.PlayerGui.Balance:FindFirstChild("Frame")
+        and player.PlayerGui.Balance.Frame:FindFirstChild("Amount")
+
+    if amountLabel and amountLabel:IsA("TextLabel") then
+        local rawText = amountLabel.Text
+        local cleanNum = rawText:gsub("[%D]", "") -- ลบตัวอักษรทุกอย่างที่ไม่ใช่ตัวเลข
+        return tonumber(cleanNum) or 0
+    end
+    return 0
+end
+
+--// ===== สร้าง UI =====
+local guiParent
+pcall(function() guiParent = game:GetService("CoreGui") end)
+if not guiParent then guiParent = player:WaitForChild("PlayerGui") end
+
+if guiParent:FindFirstChild("AutoChefUI") then
+    guiParent.AutoChefUI:Destroy()
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "AutoChefUI"
+gui.ResetOnSpawn = false
+gui.Parent = guiParent
+
+local main = Instance.new("Frame")
+main.Size = UDim2.fromOffset(300, 360) -- ขยายขนาด UI
+main.Position = UDim2.new(0, 150, 0.5, -180)
+main.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+main.BackgroundTransparency = 0.05
+main.Parent = gui
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -70, 0, 30)
+title.Position = UDim2.fromOffset(10, 5)
+title.BackgroundTransparency = 1
+title.Text = "🍓 Cook & Sell! [ALPHA]"
+title.TextColor3 = Color3.fromRGB(255, 200, 100)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 15
+title.Parent = main
+
+local destroyBtn = Instance.new("TextButton")
+destroyBtn.Size = UDim2.fromOffset(60, 24)
+destroyBtn.Position = UDim2.new(1, -70, 0, 8)
+destroyBtn.Text = "DESTROY"
+destroyBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+destroyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+destroyBtn.Font = Enum.Font.SourceSansBold
+destroyBtn.Parent = main
+
+local plotSelectBtn = Instance.new("TextButton")
+plotSelectBtn.Size = UDim2.new(1, -20, 0, 35)
+plotSelectBtn.Position = UDim2.fromOffset(10, 40) 
+plotSelectBtn.Text = "📍 Plot: " .. currentPlot .. " (" .. plotColors[currentPlot] .. ")"
+plotSelectBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+plotSelectBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+plotSelectBtn.Font = Enum.Font.SourceSansBold
+plotSelectBtn.TextSize = 15
+plotSelectBtn.Parent = main 
+
+plotSelectBtn.MouseButton1Click:Connect(function()
+    currentPlot = currentPlot + 1
+    if currentPlot > 6 then currentPlot = 1 end
+    plotSelectBtn.Text = "📍 Plot: " .. currentPlot .. " (" .. plotColors[currentPlot] .. ")"
+end)
+
+local currentMenuLabel = Instance.new("TextLabel")
+currentMenuLabel.Size = UDim2.new(1, -20, 0, 25)
+currentMenuLabel.Position = UDim2.fromOffset(10, 80)
+currentMenuLabel.BackgroundTransparency = 1
+currentMenuLabel.Text = "🎲 Menu: None"
+currentMenuLabel.TextColor3 = Color3.fromRGB(150, 255, 150)
+currentMenuLabel.Font = Enum.Font.SourceSansBold
+currentMenuLabel.TextSize = 14
+currentMenuLabel.Parent = main
+
+-- 💰 [UI] ระบบคุมงบประมาณ (Reserve Cash)
+local reserveLabel = Instance.new("TextLabel")
+reserveLabel.Size = UDim2.new(0.6, 0, 0, 30)
+reserveLabel.Position = UDim2.fromOffset(10, 110)
+reserveLabel.BackgroundTransparency = 1
+reserveLabel.Text = "💰 Min Reserve Cash:"
+reserveLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
+reserveLabel.TextXAlignment = Enum.TextXAlignment.Left
+reserveLabel.Font = Enum.Font.SourceSansBold
+reserveLabel.TextSize = 15
+reserveLabel.Parent = main
+
+local reserveInput = Instance.new("TextBox")
+reserveInput.Size = UDim2.new(0.35, 0, 0, 25)
+reserveInput.Position = UDim2.new(0.6, 0, 0, 112)
+reserveInput.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+reserveInput.TextColor3 = Color3.fromRGB(150, 255, 150)
+reserveInput.Text = "500" -- ค่าเริ่มต้น บอทจะพยายามเก็บเงินให้เกิน 500 เสมอ
+reserveInput.Font = Enum.Font.SourceSansBold
+reserveInput.TextSize = 15
+reserveInput.ClearTextOnFocus = false
+reserveInput.Parent = main
+
+local toggleFarmBtn = Instance.new("TextButton")
+toggleFarmBtn.Size = UDim2.new(1, -20, 0, 45)
+toggleFarmBtn.Position = UDim2.fromOffset(10, 145)
+toggleFarmBtn.Text = "START AUTO BUY/COOK/PLACE"
+toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+toggleFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleFarmBtn.Font = Enum.Font.SourceSansBold
+toggleFarmBtn.TextSize = 15
+toggleFarmBtn.Parent = main
+
+local toggleCheckoutBtn = Instance.new("TextButton")
+toggleCheckoutBtn.Size = UDim2.new(1, -20, 0, 45)
+toggleCheckoutBtn.Position = UDim2.fromOffset(10, 195)
+toggleCheckoutBtn.Text = "START AUTO CHECKOUT"
+toggleCheckoutBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+toggleCheckoutBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleCheckoutBtn.Font = Enum.Font.SourceSansBold
+toggleCheckoutBtn.TextSize = 16
+toggleCheckoutBtn.Parent = main
+
+local statusNote = Instance.new("TextLabel")
+statusNote.Size = UDim2.new(1, -20, 0, 80)
+statusNote.Position = UDim2.fromOffset(10, 245)
+statusNote.BackgroundTransparency = 1
+statusNote.Text = "Cook Status: Idle\nCheckout Status: Idle"
+statusNote.TextColor3 = Color3.fromRGB(180, 180, 180)
+statusNote.TextXAlignment = Enum.TextXAlignment.Center
+statusNote.TextYAlignment = Enum.TextYAlignment.Top
+statusNote.Parent = main
+
+local function updateStatus(cookText, checkoutText)
+    statusNote.Text = "Cook Status: " .. (cookText or "Idle") .. "\nCheckout Status: " .. (checkoutText or "Idle")
+end
+local currentCookStatus = "Idle"
+local currentCheckoutStatus = "Idle"
+
+--// ===== ลาก UI ได้ =====
+local dragging, dragStart, startPos
+main.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true; dragStart = input.Position; startPos = main.Position
+    end
+end)
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
+UIS.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+destroyBtn.MouseButton1Click:Connect(function()
+    scriptRunning = false
+    autoFarm = false
+    autoCheckout = false
+    if gui then gui:Destroy() end
+end)
+
+--// ===== Logic: ซื้อ, ทำอาหาร & วางของ (Thread 1) =====
+toggleFarmBtn.MouseButton1Click:Connect(function()
+    autoFarm = not autoFarm
+    if autoFarm then
+        toggleFarmBtn.Text = "STOP AUTO BUY/COOK/PLACE"
+        toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 50)
+        
+        task.spawn(function()
+            math.randomseed(tick()) 
+            
+            while autoFarm and scriptRunning do
+                pcall(function()
+                    local buyItem = ReplicatedStorage:FindFirstChild("BuyRecipeItem", true) or ReplicatedStorage.Riese.Remotes.BuyRecipeItem
+                    local startCooking = ReplicatedStorage:FindFirstChild("StartCooking", true) or ReplicatedStorage.Riese.Remotes.StartCooking
+                    local placeItem = ReplicatedStorage:FindFirstChild("PlaceDownItem", true) or ReplicatedStorage.Riese.Remotes.PlaceDownItem
+                    
+                    local plotStr = tostring(currentPlot)
+                    local plotFolder = workspace:FindFirstChild("Plots") and workspace.Plots:FindFirstChild(plotStr)
+                    local potRemote = plotFolder and plotFolder:FindFirstChild("CookingPotServerModel") and plotFolder.CookingPotServerModel:FindFirstChild("Remote")
+                    
+                    if buyItem and startCooking and potRemote and placeItem then
+                        
+                        -- 🛑 1. เช็คว่าร้านเต็มมั้ย
+                        while getCookedTool() ~= nil and (autoFarm and scriptRunning) do
+                            currentCookStatus = "Shop FULL! Waiting for sales..."
+                            updateStatus(currentCookStatus, currentCheckoutStatus)
+                            
+                            local isPlaced = false
+                            local counterLetters = {"A", "B", "C", "D", "E"}
+                            for _, letter in ipairs(counterLetters) do
+                                if isPlaced or not (autoFarm and scriptRunning) then break end
+                                local targetCounter = plotFolder:FindFirstChild("Counters") and plotFolder.Counters:FindFirstChild(letter)
+                                if targetCounter then
+                                    for slot = 1, 6 do
+                                        if getCookedTool() == nil then
+                                            isPlaced = true
+                                            break
+                                        end
+                                        pcall(function() placeItem:FireServer(getCookedTool(), targetCounter, slot) end)
+                                        safeWait(0.1) 
+                                    end
+                                end
+                            end
+                            if getCookedTool() ~= nil then safeWait(2) end
+                        end
+                        
+                        if not (autoFarm and scriptRunning) then return end
+                        
+                        -- 💰 2. SMART BUDGET CHECK (เช็คเงินขั้นต่ำ)
+                        local targetReserve = tonumber(reserveInput.Text) or 0
+                        local myMoney = getCurrentMoney()
+                        
+                        if myMoney < targetReserve then
+                            currentCookStatus = "Saving Cash! ($" .. myMoney .. " / $" .. targetReserve .. ")"
+                            updateStatus(currentCookStatus, currentCheckoutStatus)
+                            safeWait(3) -- ยืนรอ 3 วิ ให้ลูกค้าซื้อของเอาเงินมาให้
+                            return -- ข้ามลูปการทำอาหารรอบนี้ไปก่อน
+                        end
+                        
+                        -- 🎯 3. เลือกว่าจะทำหมวดไหน และสุ่มอาหาร
+                        local targetCategory = categoryOrder[currentCategoryIdx]
+                        local menusInCategory = allMenusByCategory[targetCategory]
+                        local foodToCook = menusInCategory[math.random(1, #menusInCategory)]
+                        
+                        -- ขยับคิวไปหมวดถัดไป
+                        currentCategoryIdx = currentCategoryIdx + 1
+                        if currentCategoryIdx > #categoryOrder then currentCategoryIdx = 1 end
+                        
+                        currentMenuLabel.Text = "🎲 ["..targetCategory.."] "..foodToCook
+                        
+                        -- 💸 4. ลงมือซื้อวัตถุดิบ
+                        currentCookStatus = "Buying " .. foodToCook .. "..."
+                        updateStatus(currentCookStatus, currentCheckoutStatus)
+                        task.spawn(function() pcall(function() buyItem:FireServer(foodToCook, 1) end) end)
+                        safeWait(0.5) 
+                        
+                        -- 🍳 5. เริ่มทำอาหาร
+                        currentCookStatus = "Ordering..."
+                        updateStatus(currentCookStatus, currentCheckoutStatus)
+                        task.spawn(function() pcall(function() startCooking:InvokeServer(foodToCook) end) end)
+                        
+                        local spawnedFolder = plotFolder:FindFirstChild("SpawnedIngredients")
+                        local waitLimit = 0
+                        while spawnedFolder and #spawnedFolder:GetChildren() == 0 and waitLimit < 2 do
+                            if not safeWait(0.1) then break end
+                            waitLimit = waitLimit + 0.1
+                        end
+                        
+                        if spawnedFolder and #spawnedFolder:GetChildren() > 0 then
+                            for _, ing in ipairs(spawnedFolder:GetChildren()) do
+                                if not (autoFarm and scriptRunning) then break end
+                                pcall(function() potRemote:FireServer("AddIngredient", ing.Name) end)
+                                task.wait(0.05) 
+                            end
+                        else
+                            local allIngredients = ReplicatedStorage:FindFirstChild("Ingredients")
+                            if allIngredients then
+                                for _, ing in ipairs(allIngredients:GetChildren()) do
+                                    if not (autoFarm and scriptRunning) then break end
+                                    pcall(function() potRemote:FireServer("AddIngredient", ing.Name) end)
+                                    task.wait(0.01) 
+                                end
+                            end
+                        end
+                        
+                        currentCookStatus = "Watching Pot..."
+                        updateStatus(currentCookStatus, currentCheckoutStatus)
+                        
+                        local toolToPlace = nil
+                        local waitTime = 0
+                        while not toolToPlace and waitTime < 120 do
+                            if not (autoFarm and scriptRunning) then break end
+                            pcall(function() potRemote:FireServer("ClaimDessert") end)
+                            toolToPlace = getCookedTool()
+                            if not toolToPlace then
+                                safeWait(1)
+                                waitTime = waitTime + 1
+                            end
+                        end
+                        
+                        if toolToPlace then
+                            currentCookStatus = "Fast Scanning Slots..."
+                            updateStatus(currentCookStatus, currentCheckoutStatus)
+                            
+                            local isPlaced = false
+                            local counterLetters = {"A", "B", "C", "D", "E"}
+                            
+                            for _, letter in ipairs(counterLetters) do
+                                if isPlaced or not (autoFarm and scriptRunning) then break end
+                                local targetCounter = plotFolder:FindFirstChild("Counters") and plotFolder.Counters:FindFirstChild(letter)
+                                if targetCounter then
+                                    for slot = 1, 6 do
+                                        if getCookedTool() == nil then
+                                            isPlaced = true
+                                            break
+                                        end
+                                        currentCookStatus = "Trying " .. letter .. "-" .. slot
+                                        updateStatus(currentCookStatus, currentCheckoutStatus)
+                                        pcall(function() placeItem:FireServer(getCookedTool(), targetCounter, slot) end)
+                                        safeWait(0.1) 
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+                task.wait(0.2)
+            end
+            
+            if scriptRunning then
+                toggleFarmBtn.Text = "START AUTO BUY/COOK/PLACE"
+                toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+                currentMenuLabel.Text = "🎲 Menu: None"
+                currentCookStatus = "Idle"
+                updateStatus(currentCookStatus, currentCheckoutStatus)
+            end
+        end)
+    else
+        toggleFarmBtn.Text = "START AUTO BUY/COOK/PLACE"
+        toggleFarmBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+        currentCookStatus = "Stopping..."
+        updateStatus(currentCookStatus, currentCheckoutStatus)
+    end
+end)
+
+--// ===== Logic: คิดเงินลูกค้า (Thread 2) =====
+toggleCheckoutBtn.MouseButton1Click:Connect(function()
+    autoCheckout = not autoCheckout
+    if autoCheckout then
+        toggleCheckoutBtn.Text = "STOP AUTO CHECKOUT"
+        toggleCheckoutBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 50)
+        
+        task.spawn(function()
+            while autoCheckout and scriptRunning do
+                pcall(function()
+                    currentCheckoutStatus = "Waiting for customer..."
+                    updateStatus(currentCookStatus, currentCheckoutStatus)
+                    
+                    local checkoutReady = ReplicatedStorage:FindFirstChild("CheckoutReady", true) or ReplicatedStorage.Riese.Remotes.CheckoutReady
+                    if checkoutReady then checkoutReady:FireServer() end
+                    
+                    local plotStr = tostring(currentPlot)
+                    local plotFolder = workspace:FindFirstChild("Plots") and workspace.Plots:FindFirstChild(plotStr)
+                    
+                    if plotFolder then
+                        for _, prompt in ipairs(plotFolder:GetDescendants()) do
+                            if prompt:IsA("ProximityPrompt") then
+                                if prompt.ActionText:lower():match("checkout") or prompt.Name:lower():match("checkout") then
+                                    if fireproximityprompt then
+                                        currentCheckoutStatus = "Checking out!"
+                                        updateStatus(currentCookStatus, currentCheckoutStatus)
+                                        fireproximityprompt(prompt)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+                task.wait(0.5) 
+            end
+            
+            if scriptRunning then
+                toggleCheckoutBtn.Text = "START AUTO CHECKOUT"
+                toggleCheckoutBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+                currentCheckoutStatus = "Idle"
+                updateStatus(currentCookStatus, currentCheckoutStatus)
+            end
+        end)
+    else
+        toggleCheckoutBtn.Text = "START AUTO CHECKOUT"
+        toggleCheckoutBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+        currentCheckoutStatus = "Stopping..."
+        updateStatus(currentCookStatus, currentCheckoutStatus)
+    end
+end)
